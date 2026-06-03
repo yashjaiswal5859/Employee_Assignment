@@ -10,8 +10,6 @@ Backend/
 ├── docker-compose.yml                # Docker setup for Master, Replica & Test databases
 ├── requirements.txt                  # Python dependencies
 ├── .env.example                      # Sample environment variables
-├── .gitignore                        # Git ignore rules
-├── FLOW_EXPLANATION.md               # Detailed request flow and layer-by-layer breakdown
 ├── core/
 │   ├── config.py                     # Configuration loader (reads from .env)
 │   ├── db.py                         # Master & Replica session connection setup
