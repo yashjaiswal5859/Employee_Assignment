@@ -42,6 +42,39 @@ Backend/
         └── test_down.sql             # Teardown test schema (drops table)
 ```
 
+## Architecture & Data Flow
+
+```mermaid
+graph TD
+    Client[Client] -->|HTTP Request| Backend[Backend App]
+    Backend -->|CUD Operations<br/>Create / Update / Delete| Master[Master DB<br/>Port 5432]
+    Backend -->|Read Operations<br/>Get / List| Replica[Replica DB<br/>Port 5433]
+    Master -->|WAL Replication Sync| Replica
+```
+
+
+### Architectural Capabilities
+
+#### 1. Functional Architecture
+
+| Feature | Implementation | Purpose |
+| :--- | :--- | :--- |
+| **Clean Layers** | Controller → Service → Repository | Splits HTTP routing, business logic, and SQL queries into separate files. |
+| **Input Validation** | Pydantic DTOs | Rejects bad requests (short names, invalid emails) before running logic. |
+| **Secure IDs** | UUID v4 | Uses UUIDs instead of integers to hide raw counts. Rejects invalid formats with 400. |
+| **Easy Errors** | `APIError` Class | Let services raise exceptions with HTTP codes, keeping controllers simple. |
+
+#### 2. Non-Functional Architecture
+
+| Attribute | Implementation | Benefit |
+| :--- | :--- | :--- |
+| **Read-Write Split** | Write → Master, Read → Replica | Sends reads to replica and writes to master to handle more traffic. |
+| **Database Sync** | WAL Streaming Slot | Syncs master changes to the replica in milliseconds. |
+| **Logs Rotation** | Rotating File Handler | Caps log file to 10MB to prevent server disk from filling up. |
+| **Separate Testing** | Isolated DB ports (5434 / 5435) | Keeps testing data completely away from production databases. |
+
+
+
 ## Setup Instructions
 
 ### 1. Create and Activate Virtual Environment
@@ -313,23 +346,8 @@ All incoming requests are strictly validated using **Pydantic Request DTOs** bef
 - **department**: Minimum 2 characters.
 - **date_joined**: Format `YYYY-MM-DD`, cannot be in the future.
 
-## Architecture & Data Flow
 
-```
-Client Request
-    ↓
-Controller Layer (employee_controller.py)
-    → Receives requests, validates via Request DTOs, formats via Response DTOs
-    ↓
-Service Layer (employee_service.py)
-    → Business logic, validation, orchestration
-    ↓
-Repository Layer (employee_repository.py)
-    → Database CRUD operations via SQLAlchemy ORM
-    ↓
-PostgreSQL Database
-    → Master (Writes) → Replicates to Replica (Reads)
-```
+
 
 Run the automated integration test suite (starts its own test DB migrations and hits the HTTP API):
 ```bash
