@@ -10,8 +10,6 @@ Backend/
 ├── docker-compose.yml                # Docker setup for Master, Replica & Test databases
 ├── requirements.txt                  # Python dependencies
 ├── .env.example                      # Sample environment variables
-├── .gitignore                        # Git ignore rules
-├── FLOW_EXPLANATION.md               # Detailed request flow and layer-by-layer breakdown
 ├── core/
 │   ├── config.py                     # Configuration loader (reads from .env)
 │   ├── db.py                         # Master & Replica session connection setup
@@ -135,8 +133,14 @@ PORT=5000
 | `PORT` | Flask application port | Configures the port that the Flask server runs on (defaults to 5000). |
 | `MASTER_DATABASE_URL` | Primary DB connection string | Used for all write operations (CREATE, UPDATE, DELETE). |
 | `REPLICA_DATABASE_URL` | Read-only DB connection string | Used for all read operations (GET) to offload traffic from the master. |
-| `TEST_MASTER_DATABASE_URL` | Test primary connection | Used by the automated test suite to test writes without destroying real data. |
-| `TEST_REPLICA_DATABASE_URL` | Test read-only connection | Used by the automated test suite to ensure replication works during tests. |
+| `TEST_MASTER_DATABASE_URL` | Test primary connection | Used by the test suite to test writes without touching real data. |
+| `TEST_REPLICA_DATABASE_URL` | Test read-only connection | Used by the test suite to verify reads during tests. |
+| `REPLICATION_USER` | Replication username | Used by the replica to authenticate with the master for WAL streaming. |
+| `REPLICATION_PASSWORD` | Replication password | Password for the replication user on the master. |
+| `TEST_REPLICATION_USER` | Test replication username | Same as above but for the test replica container. |
+| `TEST_REPLICATION_PASSWORD` | Test replication password | Same as above but for the test replica container. |
+| `REPLICATION_SLOT` | WAL replication slot name | Named slot on master that tracks which WAL data the replica has received. |
+| `TEST_REPLICATION_SLOT` | Test replication slot name | Same as above but for the test database pair. |
 
 ### 5. Run the Application
 
