@@ -7,6 +7,11 @@ A simple Employee Management System built with Python, Flask, and SQLAlchemy usi
 ```
 Backend/
 ├── app.py                            # Application entry point (runs server or tests)
+├── docker-compose.yml                # Docker setup for Master, Replica & Test databases
+├── requirements.txt                  # Python dependencies
+├── .env.example                      # Sample environment variables
+├── .gitignore                        # Git ignore rules
+├── FLOW_EXPLANATION.md               # Detailed request flow and layer-by-layer breakdown
 ├── core/
 │   ├── config.py                     # Configuration loader (reads from .env)
 │   ├── db.py                         # Master & Replica session connection setup
@@ -347,7 +352,9 @@ All incoming requests are strictly validated using **Pydantic Request DTOs** bef
 - **date_joined**: Format `YYYY-MM-DD`, cannot be in the future.
 
 
+---
 
+## Testing
 
 Run the automated integration test suite (starts its own test DB migrations and hits the HTTP API):
 ```bash
