@@ -83,41 +83,74 @@ graph TD
 
 ## Setup Instructions
 
-Only **Docker Desktop** is needed. No Python, no PostgreSQL, nothing else to install.
+You can run this project either completely using Docker, or by running the backend locally while using Docker only for the databases.
 
-### 1. Clone and Start
+### Option A: Fully Containerized (Recommended)
 
-```bash
-git clone <repo-url>
-cd Backend
-docker compose up -d
-```
+Only **Docker Desktop** is needed. No Python or PostgreSQL installation required.
 
-This starts **5 containers**:
+1. **Clone and Start**
+   ```bash
+   git clone https://github.com/yashjaiswal5859/Employee_Assignment.git
+   cd Backend
+   docker compose up -d
+   ```
+   This spins up all 5 containers (Master DB, Replica DB, Test Master, Test Replica, and the Flask Backend).
 
-| Container | Role | Port |
-|-----------|------|------|
-| `postgres_master_db` | Master DB (handles writes) | 5432 |
-| `postgres_replica_db` | Replica DB (handles reads) | 5433 |
-| `postgres_test_master_db` | Test Master DB | 5434 |
-| `postgres_test_replica_db` | Test Replica DB | 5435 |
-| `employee_backend` | Flask App | 5000 |
+2. **Access the API**
+   The API is live at `http://localhost:5000`.
 
-### 2. Use the API
+3. **Stop Everything**
+   ```bash
+   docker compose down
+   ```
 
-API is live at `http://localhost:5000`.
+### Option B: Run Backend Locally (Without Docker for Backend)
 
-### Stop Everything
+Requires **Python 3.10+** and **Docker Desktop** (for the databases).
 
-```bash
-docker compose down
-```
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/yashjaiswal5859/Employee_Assignment.git
+   cd Backend
+   ```
+
+2. **Start the Databases**
+   We still use Docker to quickly spin up the Master and Replica Postgres databases.
+   ```bash
+   # Start only the database containers, skip the backend container
+   docker compose up -d postgres_master postgres_replica postgres_test_master postgres_test_replica
+   ```
+
+3. **Set Up Python Environment**
+   ```bash
+   python -m venv venv
+   
+   # Windows
+   venv\Scripts\activate
+   # macOS/Linux
+   source venv/bin/activate
+   
+   pip install -r requirements.txt
+   ```
+
+4. **Configure Environment Variables**
+   ```bash
+   cp .env.example .env
+   ```
+   *(Note: The defaults in `.env.example` already use `localhost:5432` and `localhost:5433` for DB connections, which is correct for local development).*
+
+5. **Run the Flask App**
+   ```bash
+   python app.py
+   ```
+   The API will be available at `http://localhost:5000`.
+
+---
 
 ### Environment Variables
 
-All environment variables are pre-configured inside `docker-compose.yml`. No `.env` file is needed when running via Docker.
-
-If running **locally without Docker** (requires Python 3.10+ and PostgreSQL), copy `.env.example` to `.env` and start with `python app.py`.
+If using Option A (Docker), everything is pre-configured inside `docker-compose.yml`. If using Option B (Local), they are read from `.env`.
 
 | Variable | Description | Reason for Use |
 |----------|-------------|----------------|
