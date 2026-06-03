@@ -6,19 +6,37 @@ A simple Employee Management System built with Python, Flask, and SQLAlchemy usi
 
 ```
 Backend/
-├── app.py                          # Application entry point
-├── config.py                       # Configuration (reads from .env)
-├── models.py                       # SQLAlchemy Employee model
+├── app.py                            # Application entry point (runs server or tests)
+├── core/
+│   ├── config.py                     # Configuration loader (reads from .env)
+│   └── db.py                         # Master & Replica session connection setup
+├── models/
+│   └── employee_model.py             # SQLAlchemy Database Model for Employees
+├── dtos/
+│   ├── request/
+│   │   └── employee_request.py       # Pydantic Request validation DTOs
+│   └── response/
+│       └── employee_response.py      # Pydantic Response formatting DTOs
 ├── controllers/
-│   └── employee_controller.py      # API routes (Controller Layer)
+│   └── employee_controller.py        # Controller Layer (HTTP routes & DTO matching)
 ├── services/
-│   └── employee_service.py         # Business logic (Service Layer)
+│   └── employee_service.py           # Service Layer (Business logic & domain checks)
 ├── repositories/
-│   └── employee_repository.py      # Database access (Repository Layer)
-├── tests/                          # Unit tests for each layer
-├── requirements.txt
-├── .env.example
-└── README.md
+│   └── employee_repository.py        # Repository Layer (Direct database queries)
+├── migrations/
+│   ├── 1717334640_initial_up.sql      # Main schema setup migration (creates table)
+│   ├── 1717334640_initial_down.sql    # Main schema teardown migration (drops table)
+│   └── README.md                     # Migration execution documentation
+├── docker/
+│   └── postgres/
+│       ├── create-replication-user.sh # Runs on Master (creates replicator user/slot)
+│       └── setup-replica.sh          # Runs on Replica (clones Master and sets standby)
+└── tests/
+    ├── test_runner.py                # Automated migration-based integration test runner
+    └── migrations/
+        ├── test_up.sql               # Creates employees table in test database
+        ├── test_seed.sql             # Seeds 5 dummy records with static UUIDs for tests
+        └── test_down.sql             # Teardown test schema (drops table)
 ```
 
 ## Setup Instructions
@@ -41,12 +59,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Setup PostgreSQL Database
+### 3. Start PostgreSQL Databases
 
-Make sure PostgreSQL is installed and running. Then create the database:
+Make sure Docker Desktop is installed and running. Then start the Master/Replica database containers:
 
-```sql
-CREATE DATABASE employee_db;
+```bash
+docker compose up -d
 ```
 
 ### 4. Configure Environment Variables
@@ -58,10 +76,26 @@ cp .env.example .env
 Edit the `.env` file with your PostgreSQL credentials:
 
 ```
-FLASK_ENV=development
-DATABASE_URL=postgresql://username:password@localhost:5432/employee_db
-TEST_DATABASE_URL=postgresql://username:password@localhost:5432/employee_test_db
+MASTER_DATABASE_URL=postgresql://employee:secret123@localhost:5432/mydatabase
+REPLICA_DATABASE_URL=postgresql://employee:secret123@localhost:5433/mydatabase
+TEST_MASTER_DATABASE_URL=postgresql://employee:secret123@localhost:5434/employee_test_db
+TEST_REPLICA_DATABASE_URL=postgresql://employee:secret123@localhost:5435/employee_test_db
+REPLICATION_USER=replicator
+REPLICATION_PASSWORD=secret123
+TEST_REPLICATION_USER=replicator
+TEST_REPLICATION_PASSWORD=secret123
+REPLICATION_SLOT=replica_slot
+TEST_REPLICATION_SLOT=test_replica_slot
+PORT=5000
 ```
+
+| Variable | Description | Reason for Use |
+|----------|-------------|----------------|
+| `PORT` | Flask application port | Configures the port that the Flask server runs on (defaults to 5000). |
+| `MASTER_DATABASE_URL` | Primary DB connection string | Used for all write operations (CREATE, UPDATE, DELETE). |
+| `REPLICA_DATABASE_URL` | Read-only DB connection string | Used for all read operations (GET) to offload traffic from the master. |
+| `TEST_MASTER_DATABASE_URL` | Test primary connection | Used by the automated test suite to test writes without destroying real data. |
+| `TEST_REPLICA_DATABASE_URL` | Test read-only connection | Used by the automated test suite to ensure replication works during tests. |
 
 ### 5. Run the Application
 
@@ -69,14 +103,18 @@ TEST_DATABASE_URL=postgresql://username:password@localhost:5432/employee_test_db
 python app.py
 ```
 
-The API will be available at `http://localhost:5000`
+The API will be available at `http://localhost:5000` (or whatever `PORT` you configured in `.env`).
+
+---
 
 ## API Endpoints
 
 ### 1. Create Employee
 **POST** `/employees`
 
-Request:
+Creates a new employee. Incoming data is strictly validated.
+
+**Request Body:**
 ```json
 {
     "name": "John Doe",
@@ -86,40 +124,79 @@ Request:
 }
 ```
 
-Response `201 Created`:
+**✅ Success Response (`201 Created`):**
 ```json
 {
-    "id": 1,
+    "id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
     "name": "John Doe",
     "email": "john.doe@example.com",
     "department": "Engineering",
     "date_joined": "2024-01-15"
 }
 ```
+
+**❌ Failure Response (`400 Bad Request` - Validation Error):**
+Happens if the payload is invalid (e.g. name too short, bad email format, future date).
+```json
+{
+    "error": "Validation Error",
+    "details": [
+        {
+            "loc": ["name"],
+            "msg": "String should have at least 2 characters",
+            "type": "string_too_short"
+        }
+    ]
+}
+```
+
+**❌ Failure Response (`400 Bad Request` - Duplicate Email):**
+Happens if the email already belongs to another employee.
+```json
+{
+    "error": "Employee with email john.doe@example.com already exists"
+}
+```
+
+---
 
 ### 2. Get All Employees
 **GET** `/employees`
 
-Response `200 OK`:
+Retrieves a list of all employees. This read operation goes directly to the **Replica Database**.
+
+**✅ Success Response (`200 OK`):**
 ```json
 [
     {
-        "id": 1,
+        "id": "11111111-1111-1111-1111-111111111111",
         "name": "John Doe",
         "email": "john.doe@example.com",
         "department": "Engineering",
         "date_joined": "2024-01-15"
+    },
+    {
+        "id": "22222222-2222-2222-2222-222222222222",
+        "name": "Jane Smith",
+        "email": "jane.smith@example.com",
+        "department": "Marketing",
+        "date_joined": "2024-02-01"
     }
 ]
 ```
+*(Returns an empty array `[]` if there are no employees).*
+
+---
 
 ### 3. Get Employee by ID
 **GET** `/employees/{id}`
 
-Response `200 OK`:
+Retrieves a single employee. This read operation goes directly to the **Replica Database**.
+
+**✅ Success Response (`200 OK`):**
 ```json
 {
-    "id": 1,
+    "id": "11111111-1111-1111-1111-111111111111",
     "name": "John Doe",
     "email": "john.doe@example.com",
     "department": "Engineering",
@@ -127,68 +204,111 @@ Response `200 OK`:
 }
 ```
 
-### 4. Update Employee
-**PUT** `/employees/{id}`
-
-Request (all fields optional):
+**❌ Failure Response (`404 Not Found`):**
+Happens if the ID does not exist in the database.
 ```json
 {
-    "name": "Jane Doe",
-    "department": "Marketing"
+    "error": "Employee with ID 99999999-9999-9999-9999-999999999999 not found"
 }
 ```
 
-Response `200 OK`:
+---
+
+### 4. Update Employee
+**PUT** `/employees/{id}`
+
+Updates an existing employee. Only fields provided in the payload will be updated.
+
+**Request Body (All fields optional):**
 ```json
 {
-    "id": 1,
-    "name": "Jane Doe",
+    "name": "John Updated",
+    "department": "Management"
+}
+```
+
+**✅ Success Response (`200 OK`):**
+```json
+{
+    "id": "11111111-1111-1111-1111-111111111111",
+    "name": "John Updated",
     "email": "john.doe@example.com",
-    "department": "Marketing",
+    "department": "Management",
     "date_joined": "2024-01-15"
 }
 ```
 
+**❌ Failure Response (`404 Not Found`):**
+Happens if you try to update an ID that does not exist.
+```json
+{
+    "error": "Employee with ID 99999999-9999-9999-9999-999999999999 not found"
+}
+```
+
+**❌ Failure Response (`400 Bad Request` - Validation Error):**
+Happens if you try to update a field with invalid data (e.g. empty name).
+```json
+{
+    "error": "Validation Error",
+    "details": [
+        {
+            "loc": ["department"],
+            "msg": "String should have at least 2 characters",
+            "type": "string_too_short"
+        }
+    ]
+}
+```
+
+**❌ Failure Response (`400 Bad Request` - Duplicate Email):**
+Happens if you try to update the email to one that is already taken by *another* employee.
+```json
+{
+    "error": "Email jane.smith@example.com is already in use"
+}
+```
+
+---
+
 ### 5. Delete Employee
 **DELETE** `/employees/{id}`
 
-Response `200 OK`:
+Deletes an employee from the database entirely.
+
+**✅ Success Response (`200 OK`):**
 ```json
 {
-    "message": "Employee with ID 1 deleted successfully"
+    "message": "Employee with ID 11111111-1111-1111-1111-111111111111 deleted successfully"
 }
 ```
 
-## Error Responses
-
-| Status Code | Description |
-|-------------|-------------|
-| 400 | Bad Request - Invalid input or validation error |
-| 404 | Not Found - Employee not found |
-| 500 | Internal Server Error |
-
-Error format:
+**❌ Failure Response (`404 Not Found`):**
+Happens if you try to delete an ID that does not exist.
 ```json
 {
-    "error": "Error message"
+    "error": "Employee with ID 99999999-9999-9999-9999-999999999999 not found"
 }
 ```
 
-## Data Validation (Service Layer)
+---
 
-- **name**: Minimum 2 characters
-- **email**: Must contain `@` and a `.` in the domain
-- **department**: Minimum 2 characters
-- **date_joined**: Format `YYYY-MM-DD`, cannot be in the future
-- **email**: Must be unique across all employees
+## Data Validation Rules
 
-## Architecture
+All incoming requests are strictly validated using **Pydantic Request DTOs** before they hit the Service Layer.
+
+- **name**: Minimum 2 characters.
+- **email**: Must be a valid email format (validated by Pydantic DTO) and must be unique (enforced by the Service layer checking the database).
+- **department**: Minimum 2 characters.
+- **date_joined**: Format `YYYY-MM-DD`, cannot be in the future.
+
+## Architecture & Data Flow
 
 ```
 Client Request
     ↓
 Controller Layer (employee_controller.py)
-    → Receives HTTP requests, sends HTTP responses
+    → Receives requests, validates via Request DTOs, formats via Response DTOs
     ↓
 Service Layer (employee_service.py)
     → Business logic, validation, orchestration
@@ -197,24 +317,10 @@ Repository Layer (employee_repository.py)
     → Database CRUD operations via SQLAlchemy ORM
     ↓
 PostgreSQL Database
+    → Master (Writes) → Replicates to Replica (Reads)
 ```
 
-## Running Tests
-
-Create a test database first:
-```sql
-CREATE DATABASE employee_test_db;
-```
-
-Then run:
+Run the automated integration test suite (starts its own test DB migrations and hits the HTTP API):
 ```bash
-pytest
+python app.py --test
 ```
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/employee_db` |
-| `TEST_DATABASE_URL` | Test database connection string | `postgresql://postgres:postgres@localhost:5432/employee_test_db` |
-| `FLASK_ENV` | Flask environment | `development` |

@@ -1,4 +1,4 @@
--- UP: Create employees table
+-- UP: Create employees table for testing
 CREATE TABLE IF NOT EXISTS employees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(120) NOT NULL,
