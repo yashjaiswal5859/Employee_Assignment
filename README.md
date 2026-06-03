@@ -7,9 +7,12 @@ A simple Employee Management System built with Python, Flask, and SQLAlchemy usi
 ```
 Backend/
 ├── app.py                            # Application entry point (runs server or tests)
+├── Dockerfile                        # Container image for Flask app (Python 3.10)
+├── .dockerignore                     # Files excluded from Docker build
 ├── docker-compose.yml                # Docker setup for Master, Replica & Test databases
 ├── requirements.txt                  # Python dependencies
 ├── .env.example                      # Sample environment variables
+├── .gitignore                        # Git ignore rules
 ├── core/
 │   ├── config.py                     # Configuration loader (reads from .env)
 │   ├── db.py                         # Master & Replica session connection setup
@@ -80,53 +83,41 @@ graph TD
 
 ## Setup Instructions
 
-### 1. Create and Activate Virtual Environment
+Only **Docker Desktop** is needed. No Python, no PostgreSQL, nothing else to install.
+
+### 1. Clone and Start
 
 ```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS/Linux
-source venv/bin/activate
-```
-
-### 2. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Start PostgreSQL Databases
-
-Make sure Docker Desktop is installed and running. Then start the Master/Replica database containers:
-
-```bash
+git clone <repo-url>
+cd Backend
 docker compose up -d
 ```
 
-### 4. Configure Environment Variables
+This starts **5 containers**:
+
+| Container | Role | Port |
+|-----------|------|------|
+| `postgres_master_db` | Master DB (handles writes) | 5432 |
+| `postgres_replica_db` | Replica DB (handles reads) | 5433 |
+| `postgres_test_master_db` | Test Master DB | 5434 |
+| `postgres_test_replica_db` | Test Replica DB | 5435 |
+| `employee_backend` | Flask App | 5000 |
+
+### 2. Use the API
+
+API is live at `http://localhost:5000`.
+
+### Stop Everything
 
 ```bash
-cp .env.example .env
+docker compose down
 ```
 
-Edit the `.env` file with your PostgreSQL credentials:
+### Environment Variables
 
-```
-MASTER_DATABASE_URL=postgresql://employee:secret123@localhost:5432/mydatabase
-REPLICA_DATABASE_URL=postgresql://employee:secret123@localhost:5433/mydatabase
-TEST_MASTER_DATABASE_URL=postgresql://employee:secret123@localhost:5434/employee_test_db
-TEST_REPLICA_DATABASE_URL=postgresql://employee:secret123@localhost:5435/employee_test_db
-REPLICATION_USER=replicator
-REPLICATION_PASSWORD=secret123
-TEST_REPLICATION_USER=replicator
-TEST_REPLICATION_PASSWORD=secret123
-REPLICATION_SLOT=replica_slot
-TEST_REPLICATION_SLOT=test_replica_slot
-PORT=5000
-```
+All environment variables are pre-configured inside `docker-compose.yml`. No `.env` file is needed when running via Docker.
+
+If running **locally without Docker** (requires Python 3.10+ and PostgreSQL), copy `.env.example` to `.env` and start with `python app.py`.
 
 | Variable | Description | Reason for Use |
 |----------|-------------|----------------|
@@ -141,14 +132,6 @@ PORT=5000
 | `TEST_REPLICATION_PASSWORD` | Test replication password | Same as above but for the test replica container. |
 | `REPLICATION_SLOT` | WAL replication slot name | Named slot on master that tracks which WAL data the replica has received. |
 | `TEST_REPLICATION_SLOT` | Test replication slot name | Same as above but for the test database pair. |
-
-### 5. Run the Application
-
-```bash
-python app.py
-```
-
-The API will be available at `http://localhost:5000` (or whatever `PORT` you configured in `.env`).
 
 ---
 
@@ -360,7 +343,12 @@ All incoming requests are strictly validated using **Pydantic Request DTOs** bef
 
 ## Testing
 
-Run the automated integration test suite (starts its own test DB migrations and hits the HTTP API):
+Run the automated integration test suite (18 tests covering all CRUD, validation, and error cases):
+```bash
+docker exec employee_backend python app.py --test
+```
+
+If running locally without Docker:
 ```bash
 python app.py --test
 ```
