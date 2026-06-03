@@ -23,7 +23,10 @@ Backend/
 ├── app.py                            # Application entry point (runs server or tests)
 ├── core/
 │   ├── config.py                     # Configuration loader (reads from .env)
-│   └── db.py                         # Master & Replica session connection setup
+│   ├── db.py                         # Master & Replica session connection setup
+│   └── logger.py                     # Structured logging configuration
+├── utils/
+│   └── constants.py                  # APIError exception, HTTP statuses & messaging
 ├── models/
 │   └── employee_model.py             # SQLAlchemy Database Model for Employees
 ├── dtos/
@@ -550,7 +553,7 @@ PHASE 2: Seed Data
     → Inserts 5 dummy employees
     → WAL replication copies them to Test Replica automatically
 
-PHASE 3: Run 17 Test Cases
+PHASE 3: Run 18 Test Cases
     Each test:
       1. Prepares mock data
       2. Uses the Flask `test_client()` to make a real HTTP request to the API route
@@ -564,7 +567,7 @@ PHASE 4: DOWN Migration (Cleanup)
     → WAL replication drops it on Test Replica automatically
 ```
 
-### The 17 Test Cases:
+### The 18 Test Cases:
 
 | # | Test | What it checks |
 |---|------|----------------|
@@ -577,14 +580,15 @@ PHASE 4: DOWN Migration (Cleanup)
 | 7 | CREATE bad date format | Rejects date like "01-15-2024" (must be YYYY-MM-DD) |
 | 8 | GET ALL employees | Returns list of 6 employees (5 seeded + 1 created in test #1) |
 | 9 | GET BY ID (valid) | Returns correct employee for seeded UUID |
-| 10 | GET BY ID (not found) | Throws error for non-existent UUID |
-| 11 | UPDATE valid | Updates name and department successfully |
-| 12 | UPDATE not found | Throws error for non-existent UUID |
-| 13 | UPDATE short name | Rejects updated name with less than 2 characters |
-| 14 | UPDATE duplicate email | Rejects email that belongs to another employee |
-| 15 | DELETE valid | Deletes employee with seeded UUID successfully |
-| 16 | DELETE not found | Throws error for non-existent UUID |
-| 17 | DELETE verify gone | Confirms deleted employee no longer exists in DB |
+| 10 | GET BY ID (invalid format) | Rejects bad UUID format like "1" with 400 Bad Request |
+| 11 | GET BY ID (not found) | Throws error for non-existent UUID |
+| 12 | UPDATE valid | Updates name and department successfully |
+| 13 | UPDATE not found | Throws error for non-existent UUID |
+| 14 | UPDATE short name | Rejects updated name with less than 2 characters |
+| 15 | UPDATE duplicate email | Rejects email that belongs to another employee |
+| 16 | DELETE valid | Deletes employee with seeded UUID successfully |
+| 17 | DELETE not found | Throws error for non-existent UUID |
+| 18 | DELETE verify gone | Confirms deleted employee no longer exists in DB |
 
 ### Example Output:
 ```
@@ -611,6 +615,7 @@ PHASE 4: DOWN Migration (Cleanup)
 -- PHASE 3 - Tests: GET Employee(s) --
   GET ALL - returns list (expected 6, got 6)              [PASS]
   GET BY ID - valid id (id=11111111-1111-1111-1111-111111111111) [PASS]
+  GET BY ID - reject invalid UUID format                  [PASS]
   GET BY ID - not found (id=99999999-9999-9999-9999-999999999999) [PASS]
 
 -- PHASE 3 - Tests: UPDATE Employee (HTTP -> Pydantic -> DB) --
@@ -633,8 +638,8 @@ PHASE 4: DOWN Migration (Cleanup)
   TEST RESULTS SUMMARY
 ============================================================
 
-  Total : 17
-  Passed: 17
+  Total : 18
+  Passed: 18
   Failed: 0
 
   >>> ALL TESTS PASSED <<<
@@ -785,7 +790,19 @@ class Employee(db.Model):
 1. Reads SQL migration files from `tests/migrations/`
 2. Creates the `employees` table on the Test Master (replicates to Test Replica)
 3. Seeds 5 dummy employees on the Test Master (replicates to Test Replica)
-4. Runs 17 test cases by calling the Flask HTTP test client
+4. Runs 18 test cases by calling the Flask HTTP test client
 5. Compares actual HTTP results vs expected results
 6. Drops the `employees` table (cleanup)
 7. Prints a summary of passed/failed tests
+
+---
+
+### 7.12 `utils/constants.py` — Constants & Exceptions
+
+**What it does:** Centralizes standard application metadata to avoid hardcoded string values and brittle error string comparisons across application layers.
+
+**Key features:**
+1. **HTTP Status Codes**: Centralizes standard response statuses (e.g. `STATUS_BAD_REQUEST = 400`, `STATUS_NOT_FOUND = 404`).
+2. **Standard Messaging**: Stores template strings for success and failure JSON payloads.
+3. **`APIError` Exception**: A lightweight, custom Python exception class encapsulating an error message along with an HTTP status code. The Service layer raises this directly, and the Controller catches it to respond instantly without needing string matching.
+

@@ -1,23 +1,43 @@
+import logging
+import uuid
 from flask import Blueprint, request, jsonify
 from services.employee_service import EmployeeService
-from dtos.request.employee_request import CreateEmployeeRequestDTO, UpdateEmployeeRequestDTO
+from dtos.request.employee_request import (
+    CreateEmployeeRequestDTO,
+    UpdateEmployeeRequestDTO,
+)
 from dtos.response.employee_response import (
-    CreateEmployeeResponseDTO, UpdateEmployeeResponseDTO,
-    GetEmployeeResponseDTO, GetAllEmployeesResponseDTO,
-    DeleteEmployeeResponseDTO
+    CreateEmployeeResponseDTO,
+    UpdateEmployeeResponseDTO,
+    GetEmployeeResponseDTO,
+    GetAllEmployeesResponseDTO,
+    DeleteEmployeeResponseDTO,
 )
 from pydantic import ValidationError
+from utils.constants import (
+    APIError,
+    STATUS_OK,
+    STATUS_CREATED,
+    STATUS_BAD_REQUEST,
+    STATUS_INTERNAL_ERROR,
+    ERR_BODY_REQUIRED,
+    ERR_VALIDATION_FAILED,
+    ERR_INTERNAL_SERVER,
+)
 
-employee_bp = Blueprint('employees', __name__, url_prefix='/employees')
+employee_bp = Blueprint("employees", __name__, url_prefix="/employees")
+logger = logging.getLogger(__name__)
 
 
-@employee_bp.route('', methods=['POST'])
+@employee_bp.route("", methods=["POST"])
 def create_employee():
     try:
         data = request.get_json()
+        logger.info("POST /employees - Received payload: %s", data)
 
         if not data:
-            return jsonify({"error": "Request body is required"}), 400
+            logger.warning("POST /employees - Missing request body")
+            return jsonify({"error": ERR_BODY_REQUIRED}), STATUS_BAD_REQUEST
 
         validated_data = CreateEmployeeRequestDTO(**data)
 
@@ -25,79 +45,130 @@ def create_employee():
             name=validated_data.name,
             email=validated_data.email,
             department=validated_data.department,
-            date_joined=validated_data.date_joined.isoformat()
+            date_joined=validated_data.date_joined.isoformat(),
         )
 
-        return jsonify(CreateEmployeeResponseDTO(**employee).model_dump(mode='json')), 201
+        logger.info(
+            "POST /employees - Successfully created employee ID: %s", employee.get("id")
+        )
+        return jsonify(
+            CreateEmployeeResponseDTO(**employee).model_dump(mode="json")
+        ), STATUS_CREATED
 
     except ValidationError as e:
-        safe_errors = [{"loc": err.get("loc"), "msg": err.get("msg"), "type": err.get("type")} for err in e.errors()]
-        return jsonify({"error": "Validation Error", "details": safe_errors}), 400
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        safe_errors = [
+            {"loc": err.get("loc"), "msg": err.get("msg"), "type": err.get("type")}
+            for err in e.errors()
+        ]
+        logger.warning("POST /employees - Validation Error: %s", safe_errors)
+        return jsonify(
+            {"error": ERR_VALIDATION_FAILED, "details": safe_errors}
+        ), STATUS_BAD_REQUEST
+    except APIError as e:
+        logger.warning("POST /employees - API Error: %s", e.message)
+        return jsonify({"error": e.message}), e.status_code
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        logger.exception("POST /employees - Unexpected error occurred")
+        return jsonify({"error": ERR_INTERNAL_SERVER}), STATUS_INTERNAL_ERROR
 
 
-@employee_bp.route('', methods=['GET'])
+@employee_bp.route("", methods=["GET"])
 def get_all_employees():
     try:
+        logger.info("GET /employees - Fetching all employees")
         employees = EmployeeService.get_all_employees()
-        return jsonify([GetAllEmployeesResponseDTO(**e).model_dump(mode='json') for e in employees]), 200
+        logger.info(
+            "GET /employees - Successfully retrieved %d employees", len(employees)
+        )
+        return jsonify(
+            [GetAllEmployeesResponseDTO(**e).model_dump(mode="json") for e in employees]
+        ), STATUS_OK
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        logger.exception("GET /employees - Unexpected error occurred")
+        return jsonify({"error": ERR_INTERNAL_SERVER}), STATUS_INTERNAL_ERROR
 
 
-@employee_bp.route('/<uuid:employee_id>', methods=['GET'])
+@employee_bp.route("/<string:employee_id>", methods=["GET"])
 def get_employee(employee_id):
     try:
-        employee = EmployeeService.get_employee(str(employee_id))
-        return jsonify(GetEmployeeResponseDTO(**employee).model_dump(mode='json')), 200
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 404
+        logger.info("GET /employees/%s - Fetching employee details", employee_id)
+        employee = EmployeeService.get_employee(employee_id)
+        logger.info(
+            "GET /employees/%s - Successfully retrieved employee details", employee_id
+        )
+        return jsonify(
+            GetEmployeeResponseDTO(**employee).model_dump(mode="json")
+        ), STATUS_OK
+    except APIError as e:
+        logger.warning("GET /employees/%s - API Error: %s", employee_id, e.message)
+        return jsonify({"error": e.message}), e.status_code
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        logger.exception("GET /employees/%s - Unexpected error occurred", employee_id)
+        return jsonify({"error": ERR_INTERNAL_SERVER}), STATUS_INTERNAL_ERROR
 
 
-@employee_bp.route('/<uuid:employee_id>', methods=['PUT'])
+@employee_bp.route("/<string:employee_id>", methods=["PUT"])
 def update_employee(employee_id):
     try:
         data = request.get_json()
+        logger.info(
+            "PUT /employees/%s - Received update payload: %s", employee_id, data
+        )
 
         if not data:
-            return jsonify({"error": "Request body is required"}), 400
+            logger.warning("PUT /employees/%s - Missing request body", employee_id)
+            return jsonify({"error": ERR_BODY_REQUIRED}), STATUS_BAD_REQUEST
 
         validated_data = UpdateEmployeeRequestDTO(**data)
 
         employee = EmployeeService.update_employee(
-            employee_id=str(employee_id),
+            employee_id=employee_id,
             name=validated_data.name,
             email=validated_data.email,
             department=validated_data.department,
-            date_joined=validated_data.date_joined.isoformat() if validated_data.date_joined else None
+            date_joined=validated_data.date_joined.isoformat()
+            if validated_data.date_joined
+            else None,
         )
 
-        return jsonify(UpdateEmployeeResponseDTO(**employee).model_dump(mode='json')), 200
+        logger.info("PUT /employees/%s - Successfully updated employee", employee_id)
+        return jsonify(
+            UpdateEmployeeResponseDTO(**employee).model_dump(mode="json")
+        ), STATUS_OK
 
     except ValidationError as e:
-        safe_errors = [{"loc": err.get("loc"), "msg": err.get("msg"), "type": err.get("type")} for err in e.errors()]
-        return jsonify({"error": "Validation Error", "details": safe_errors}), 400
-    except ValueError as e:
-        error_msg = str(e)
-        if "not found" in error_msg:
-            return jsonify({"error": error_msg}), 404
-        return jsonify({"error": error_msg}), 400
+        safe_errors = [
+            {"loc": err.get("loc"), "msg": err.get("msg"), "type": err.get("type")}
+            for err in e.errors()
+        ]
+        logger.warning(
+            "PUT /employees/%s - Validation Error: %s", employee_id, safe_errors
+        )
+        return jsonify(
+            {"error": ERR_VALIDATION_FAILED, "details": safe_errors}
+        ), STATUS_BAD_REQUEST
+    except APIError as e:
+        logger.warning("PUT /employees/%s - API Error: %s", employee_id, e.message)
+        return jsonify({"error": e.message}), e.status_code
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        logger.exception("PUT /employees/%s - Unexpected error occurred", employee_id)
+        return jsonify({"error": ERR_INTERNAL_SERVER}), STATUS_INTERNAL_ERROR
 
 
-@employee_bp.route('/<uuid:employee_id>', methods=['DELETE'])
+@employee_bp.route("/<string:employee_id>", methods=["DELETE"])
 def delete_employee(employee_id):
     try:
-        result = EmployeeService.delete_employee(str(employee_id))
-        return jsonify(DeleteEmployeeResponseDTO(**result).model_dump(mode='json')), 200
-
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 404
+        logger.info("DELETE /employees/%s - Deleting employee", employee_id)
+        result = EmployeeService.delete_employee(employee_id)
+        logger.info("DELETE /employees/%s - Successfully deleted employee", employee_id)
+        return jsonify(
+            DeleteEmployeeResponseDTO(**result).model_dump(mode="json")
+        ), STATUS_OK
+    except APIError as e:
+        logger.warning("DELETE /employees/%s - API Error: %s", employee_id, e.message)
+        return jsonify({"error": e.message}), e.status_code
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        logger.exception(
+            "DELETE /employees/%s - Unexpected error occurred", employee_id
+        )
+        return jsonify({"error": ERR_INTERNAL_SERVER}), STATUS_INTERNAL_ERROR

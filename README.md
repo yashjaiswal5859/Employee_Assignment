@@ -9,7 +9,10 @@ Backend/
 ├── app.py                            # Application entry point (runs server or tests)
 ├── core/
 │   ├── config.py                     # Configuration loader (reads from .env)
-│   └── db.py                         # Master & Replica session connection setup
+│   ├── db.py                         # Master & Replica session connection setup
+│   └── logger.py                     # Structured logging configuration
+├── utils/
+│   └── constants.py                  # APIError exception, HTTP status codes & strings
 ├── models/
 │   └── employee_model.py             # SQLAlchemy Database Model for Employees
 ├── dtos/
@@ -150,7 +153,7 @@ Happens if the payload is invalid (e.g. name too short, bad email format, future
 }
 ```
 
-**❌ Failure Response (`400 Bad Request` - Duplicate Email):**
+**❌ Failure Response (`409 Conflict` - Duplicate Email):**
 Happens if the email already belongs to another employee.
 ```json
 {
@@ -201,6 +204,14 @@ Retrieves a single employee. This read operation goes directly to the **Replica 
     "email": "john.doe@example.com",
     "department": "Engineering",
     "date_joined": "2024-01-15"
+}
+```
+
+**❌ Failure Response (`400 Bad Request` - Invalid ID Format):**
+Happens if the provided ID is not a valid UUID format.
+```json
+{
+    "error": "Invalid employee ID format"
 }
 ```
 
@@ -261,7 +272,7 @@ Happens if you try to update a field with invalid data (e.g. empty name).
 }
 ```
 
-**❌ Failure Response (`400 Bad Request` - Duplicate Email):**
+**❌ Failure Response (`409 Conflict` - Duplicate Email):**
 Happens if you try to update the email to one that is already taken by *another* employee.
 ```json
 {

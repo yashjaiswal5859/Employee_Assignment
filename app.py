@@ -6,11 +6,16 @@ from core.config import Config
 from core.db import init_db_connections
 from models.employee_model import db
 from controllers.employee_controller import employee_bp
+from core.logger import setup_logging
+from tests.test_runner import run_tests
 
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    # Initialize Logging
+    setup_logging(debug=app.config.get("DEBUG", True))
 
     db.init_app(app)
     init_db_connections(app)
@@ -18,31 +23,23 @@ def create_app():
     with app.app_context():
         # setup tables on master
         db.create_all()
-        
-        # try to setup on replica just in case
-        from core.db import replica_engine
-        if replica_engine:
-            try:
-                db.metadata.create_all(bind=replica_engine)
-            except Exception as e:
-                app.logger.warning(
-                    f"Couldn't run migration on replica (might be read-only): {e}"
-                )
 
     app.register_blueprint(employee_bp)
 
-    @app.route('/')
+    @app.route("/")
     def home():
-        return jsonify({
-            "message": "Employee Management System API",
-            "endpoints": {
-                "POST /employees": "Add a new employee",
-                "GET /employees": "Get all employees",
-                "GET /employees/<id>": "Get employee by ID",
-                "PUT /employees/<id>": "Update employee",
-                "DELETE /employees/<id>": "Delete employee"
+        return jsonify(
+            {
+                "message": "Employee Management System API",
+                "endpoints": {
+                    "POST /employees": "Add a new employee",
+                    "GET /employees": "Get all employees",
+                    "GET /employees/<id>": "Get employee by ID",
+                    "PUT /employees/<id>": "Update employee",
+                    "DELETE /employees/<id>": "Delete employee",
+                },
             }
-        })
+        )
 
     @app.errorhandler(404)
     def not_found(error):
@@ -55,19 +52,18 @@ def create_app():
     return app
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--test', action='store_true')
+    parser.add_argument("--test", action="store_true")
     args = parser.parse_args()
 
     if args.test:
-        from tests.test_runner import run_tests
         exit_code = run_tests()
         sys.exit(exit_code)
     else:
         app = create_app()
         app.run(
-            host='0.0.0.0',
-            port=int(os.getenv('PORT', 5000)),
-            debug=app.config.get('DEBUG', True)
+            host="0.0.0.0",
+            port=int(os.getenv("PORT", 5000)),
+            debug=app.config.get("DEBUG", True),
         )
